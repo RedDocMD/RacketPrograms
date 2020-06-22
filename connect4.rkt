@@ -38,3 +38,25 @@
                                                              (cond [(equal? tile NO-PLAYER) EMPTY-CIRCLE]
                                                                    [(equal? tile MAX-PLAYER) MAX-PLAYER-CIRCLE]
                                                                    [(equal? tile MIN-PLAYER) MIN-PLAYER-CIRCLE]))))))))))
+
+;; Makes a move and returns the next node or #f if illegal move
+(define (make-move curr-node col)
+  (define (get-column tiles column)
+    (build-list ROWS (lambda (row) (list-ref tiles (+ (* row COLUMNS) column)))))
+  (let* ([board (node-board curr-node)]
+         [next-player (if (equal? (node-player curr-node) MAX-PLAYER)
+                          MIN-PLAYER
+                          MAX-PLAYER)]
+         [curr-column (get-column board col)]
+         [ins-row -2])
+    (for ([i (in-range 1 ROWS)])
+      (when (and (not (equal? (list-ref curr-column i) NO-PLAYER)) (< ins-row 0))
+          (set! ins-row (sub1 i))))
+    (when (equal? ins-row -2) (set! ins-row (sub1 ROWS)))
+    (if (or (< ins-row 0) (not (equal? (list-ref curr-column ins-row) NO-PLAYER))) 
+        #f
+        (node (list-set board (+ (* ins-row COLUMNS) col) (node-player curr-node))
+               next-player
+               (node-alpha curr-node)
+               (node-beta curr-node)))))
+        
