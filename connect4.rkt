@@ -1,4 +1,5 @@
-#lang slideshow
+#lang racket/gui
+(require pict)
 
 ;; Dimensions of the Connect4 boards
 (define ROWS 6)
@@ -10,7 +11,10 @@
 (define MIN-PLAYER 2)
 
 ;; Game position struct
-(struct node (board player alpha beta) #:transparent)
+(struct node (board player [alpha #:mutable] [beta #:mutable]) #:transparent)
+
+;; Game state struct
+(struct state ([curr-node #:mutable] [move# #:mutable]))
 
 ;; Returns the starting node of the game
 (define (start-node)
@@ -19,16 +23,20 @@
         -inf.0
         +inf.0))
 
+;; Returns the start state of the game
+(define (start-state)
+  (state (start-node) 0))
+
 ;; Params for displaying board
-(define DIA 15)
+(define DIA 50)
 (define EMPTY-CIRCLE (circle DIA))
 (define MAX-PLAYER-CIRCLE (disk DIA #:color "Red"))
 (define MIN-PLAYER-CIRCLE (disk DIA #:color "Blue"))
 (define HSPACE 2)
 (define VSPACE 2)
 
-;; Pretty-prints out the node
-(define (print-node node)
+;; Generates a pict for the node
+(define (pict-node node)
   (let ([board (node-board node)])
     (apply hc-append HSPACE
            (build-list COLUMNS (lambda (col)
@@ -51,12 +59,51 @@
          [ins-row -2])
     (for ([i (in-range 1 ROWS)])
       (when (and (not (equal? (list-ref curr-column i) NO-PLAYER)) (< ins-row 0))
-          (set! ins-row (sub1 i))))
+        (set! ins-row (sub1 i))))
     (when (equal? ins-row -2) (set! ins-row (sub1 ROWS)))
     (if (or (< ins-row 0) (not (equal? (list-ref curr-column ins-row) NO-PLAYER))) 
         #f
         (node (list-set board (+ (* ins-row COLUMNS) col) (node-player curr-node))
-               next-player
-               (node-alpha curr-node)
-               (node-beta curr-node)))))
-        
+              next-player
+              (node-alpha curr-node)
+              (node-beta curr-node)))))
+
+
+
+;; The mutable state of the game
+(define game-state (start-state))
+
+
+(define frame (new frame% 
+                   [label "Connect4 Game"]
+                   [min-width 500]
+                   [min-height 500]))
+
+(define vertical-panel (new vertical-pane% [parent frame] [alignment '(center center)]))
+
+(define canvas (new canvas% 
+                    [parent vertical-panel]
+                    [paint-callback
+                     (lambda (canvas dc)
+                       (draw-pict (pict-node (state-curr-node game-state)) dc 0 0))]))
+
+(define input-panel (new horizontal-pane% 
+                         [parent vertical-panel]
+                         [alignment '(center top)]))
+
+(define move-button (new button% 
+                         [parent input-panel]
+                         [label "Make Move"]
+                         [callback (lambda (button event)
+                                     (let ([next-node (make-move (state-curr-node game-state) (send col-slider get-value))])
+                                       (if next-node
+                                           (set-state-curr-node! game-state next-node)
+                                           (println "Invalid move")))
+                                       (send canvas refresh))]))
+
+(define col-slider (new slider% [parent input-panel]
+                        [label "Input column"]
+                        [min-value 0]
+                        [max-value (sub1 COLUMNS)]))
+
+(send frame show #t)
