@@ -46,11 +46,24 @@
                                                              (cond [(equal? tile NO-PLAYER) EMPTY-CIRCLE]
                                                                    [(equal? tile MAX-PLAYER) MAX-PLAYER-CIRCLE]
                                                                    [(equal? tile MIN-PLAYER) MIN-PLAYER-CIRCLE]))))))))))
+;; Returns the said column as a list
+(define (get-column tiles column)
+  (build-list ROWS (lambda (row) (list-ref tiles (+ (* row COLUMNS) column)))))
+
+;; Returns the said row as a list
+(define (get-row tiles row)
+  (build-list COLUMNS (lambda (column) (list-ref tiles (+ (* row COLUMNS) column)))))
+
+;; Returns the number of chains of val of length len in tiles 
+(define (chain-count val len tiles)
+  (let ([start-lim (+ (length tiles) (- len) 1)])
+    (count identity (map (lambda (pos)
+                           (equal? (count (lambda (num) (equal? num val)) (take (list-tail tiles pos) len)) len))
+                         (stream->list (in-range start-lim))))))
+  
 
 ;; Makes a move and returns the next node or #f if illegal move
 (define (make-move curr-node col)
-  (define (get-column tiles column)
-    (build-list ROWS (lambda (row) (list-ref tiles (+ (* row COLUMNS) column)))))
   (let* ([board (node-board curr-node)]
          [next-player (if (equal? (node-player curr-node) MAX-PLAYER)
                           MIN-PLAYER
@@ -96,10 +109,13 @@
                          [label "Make Move"]
                          [callback (lambda (button event)
                                      (let ([next-node (make-move (state-curr-node game-state) (send col-slider get-value))])
+                                       (define (make-human-move)
+                                         (set-state-curr-node! game-state next-node)
+                                         (set-state-move#! game-state (add1 (state-move# game-state))))
                                        (if next-node
-                                           (set-state-curr-node! game-state next-node)
+                                           (make-human-move)
                                            (println "Invalid move")))
-                                       (send canvas refresh))]))
+                                     (send canvas refresh))]))
 
 (define col-slider (new slider% [parent input-panel]
                         [label "Input column"]
