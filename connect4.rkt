@@ -15,7 +15,7 @@
 
 
 ;; Game position struct
-(struct node (board player [alpha #:mutable] [beta #:mutable]) #:transparent)
+(struct node (board player) #:transparent)
 
 
 ;; Game state struct
@@ -25,9 +25,7 @@
 ;; Returns the starting node of the game
 (define (start-node)
   (node (build-list (* ROWS COLUMNS) (lambda (_) NO-PLAYER))
-        MAX-PLAYER
-        -inf.0
-        +inf.0))
+        MAX-PLAYER))
 
 
 ;; Returns the start state of the game
@@ -93,7 +91,7 @@
            (let* ([i (car coord)]
                   [j (cdr coord)]
                   [idx (+ (* i COLUMNS) j)])
-             (list-ref tiles idx))))))
+             (list-ref tiles idx))) coords)))
 
 
 ;; Get chains in the right diagonal direction
@@ -121,9 +119,7 @@
     (if (or (< ins-row 0) (not (equal? (list-ref curr-column ins-row) NO-PLAYER))) 
         #f
         (node (list-set board (+ (* ins-row COLUMNS) col) (node-player curr-node))
-              next-player
-              (node-alpha curr-node)
-              (node-beta curr-node)))))
+              next-player))))
 
 ;; Returns all consecutive chains of tiles
 (define (get-all-chains tiles)
@@ -134,8 +130,8 @@
                          (cons i j))])
     (let ([rows (map (lambda (row) (get-row tiles row)) row-ids)]
           [columns (map (lambda (column) (get-column tiles column)) column-ids)]
-          [right-diagonals (map (lambda (position) (get-right-diagonal-chains (car position) (cdr position))) position-ids)]
-          [left-diagonals (map (lambda (position) (get-left-diagonal-chains (car position) (cdr position))) position-ids)])
+          [right-diagonals (map (lambda (position) (get-right-diagonal-chains (car position) (cdr position) tiles)) position-ids)]
+          [left-diagonals (map (lambda (position) (get-left-diagonal-chains (car position) (cdr position) tiles)) position-ids)])
       (list rows columns right-diagonals left-diagonals))))
 
 
@@ -161,11 +157,54 @@
            [value (cond [(find-win-chain chains player) 10000]
                         [(> (tot-chain-count player 3 chains) 0) 5000]
                         [(> (tot-chain-count player 2 chains) 0) 1000]
-                        [(> (tot-chain-count player 1 chains) 0) 100])])
+                        [(> (tot-chain-count player 1 chains) 0) 100]
+                        [else 0])])
       (if (equal? player MAX-PLAYER)
           value
           (- value)))))
 
+
+;; Depth cutoff for alpha-beta search
+(define DEPTH-CUTOFF 5)
+;; Possible actions in every move
+(define ACTIONS (stream->list (in-range COLUMNS)))
+
+
+(define (alpha-beta-search curr-node eval-fn)
+  (cdr (min-value-search curr-node -inf.0 +inf.0 1 eval-fn)))
+
+(define (max-value-search curr-node alpha beta depth eval-fn)
+  (if (>= depth DEPTH-CUTOFF)
+      (cons (eval-fn curr-node) - 1)
+      (let ([v -inf.0]
+            [new-action -1])
+        (for ([a ACTIONS]
+              #:break (>= v beta))
+          (let ([new-node (make-move curr-node a)])
+            (when new-node
+              (let ([new-pair (min-value-search new-node alpha beta (add1 depth) eval-fn)])
+                (when (> (car new-pair) v)
+                  (set! v (car new-pair))
+                  (set! new-action a))
+                (set! alpha (max v alpha))))))
+        (cons v new-action))))
+
+(define (min-value-search curr-node alpha beta depth eval-fn)
+  (if (>= depth DEPTH-CUTOFF)
+      (cons (eval-fn curr-node) -1)
+      (let ([v +inf.0]
+            [new-action -1])
+        (for ([a ACTIONS]
+              #:break (<= v alpha))
+          (let ([new-node (make-move curr-node a)])
+            (when new-node
+              (let ([new-pair (max-value-search new-node alpha beta (add1 depth) eval-fn)])
+                (when (< (car new-pair) v)
+                  (set! v (car new-pair))
+                  (set! new-action a))
+                (set! beta (min v beta))))))
+        (cons v new-action))))
+                     
 
 ;; The mutable state of the game
 (define game-state (start-state))
@@ -192,15 +231,25 @@
                          [parent input-panel]
                          [label "Make Move"]
                          [callback (lambda (button event)
-                                     (let ([next-node (make-move (state-curr-node game-state) (send col-slider get-value))])
-                                       (define (make-human-move)
-                                         (set-state-curr-node! game-state next-node)
-                                         (set-state-move#! game-state (add1 (state-move# game-state))))
-                                       (if next-node
-                                           (make-human-move)
-                                           (println "Invalid move")))
-                                     (send canvas refresh))]))
-
+                                     (define (update-state next-node)
+                                       (set-state-curr-node! game-state next-node)
+                                       (set-state-move#! game-state (add1 (state-move# game-state)))
+                                       (send canvas refresh)
+                                       #t)
+                                     (define (make-human-move)
+                                       (let ([next-node (make-move (state-curr-node game-state) (send col-slider get-value))])
+                                         (if next-node
+                                             (update-state next-node)
+                                             #f)))
+                                     (define (make-ai-move)
+                                       (let* ([curr-node (state-curr-node game-state)]
+                                              [next-move (alpha-beta-search curr-node static-evaluator)]
+                                              [next-node (make-move curr-node next-move)])
+                                         (update-state next-node)))
+                                     (if (make-human-move)
+                                         (make-ai-move)
+                                         (println "Invalid move")))]))
+                                   
 (define col-slider (new slider% [parent input-panel]
                         [label "Input column"]
                         [min-value 0]
