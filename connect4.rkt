@@ -121,6 +121,7 @@
         (node (list-set board (+ (* ins-row COLUMNS) col) (node-player curr-node))
               next-player))))
 
+
 ;; Returns all consecutive chains of tiles
 (define (get-all-chains tiles)
   (let* ([row-ids (stream->list (in-range ROWS))]
@@ -165,7 +166,7 @@
 
 
 ;; Depth cutoff for alpha-beta search
-(define DEPTH-CUTOFF 5)
+(define DEPTH-CUTOFF 8)
 ;; Possible actions in every move
 (define ACTIONS (stream->list (in-range COLUMNS)))
 
@@ -174,7 +175,7 @@
   ;; For max player
   (define (max-value-search curr-node alpha beta depth eval-fn)
     (if (>= depth DEPTH-CUTOFF)
-        (cons (eval-fn curr-node) - 1)
+        (cons (eval-fn curr-node) -1)
         (let ([v -inf.0]
               [new-action -1])
           (for ([a ACTIONS]
@@ -208,6 +209,8 @@
     (displayln (car ans))
     (cdr ans)))
 
+
+
 ;; Checks if game has been won
 (define (game-won? curr-node)
   (let* ([tiles (node-board curr-node)]
@@ -217,15 +220,18 @@
           [else #f])))
 
 
+
 ;; The mutable state of the game
 (define game-state (start-state))
 
 
+;; Top level frames
 (define frame (new frame% 
                    [label "Connect4 Game"]
                    [min-width 500]
                    [min-height 500]))
 
+;; For vertical alignment
 (define vertical-panel (new vertical-pane% [parent frame] [alignment '(center center)]))
 
 (define canvas (new canvas% 
@@ -234,12 +240,16 @@
                      (lambda (canvas dc)
                        (draw-pict (pict-node (state-curr-node game-state)) dc 0 0))]))
 
+;; For horizontally aligning input elements
 (define input-panel (new horizontal-pane% [parent vertical-panel] [alignment '(center center)]))
 
+;; Button to make move
 (define move-button (new button% 
                          [parent input-panel]
                          [label "Make Move"]
                          [callback (lambda (button event)
+                                     ;; Updates state to node
+                                     ;; Returns true if game not won yet
                                      (define (update-state next-node)
                                        (set-state-curr-node! game-state next-node)
                                        (set-state-move#! game-state (add1 (state-move# game-state)))
@@ -247,11 +257,15 @@
                                        (send message set-label "")
                                        (send canvas refresh)
                                        (not (state-won game-state)))
+                                     ;; Human move
+                                     ;; Returns false if move is invalid or game has been won
                                      (define (make-human-move)
                                        (let ([next-node (make-move (state-curr-node game-state) (send col-slider get-value))])
                                          (if next-node
                                              (update-state next-node)
                                              #f)))
+                                     ;; Performs Alpha-Beta search
+                                     ;; Returns false if game has been won
                                      (define (make-ai-move)
                                        (let* ([curr-node (state-curr-node game-state)]
                                               [next-move (alpha-beta-search curr-node static-evaluator)]
@@ -264,14 +278,17 @@
                                                (send message set-label "Game won by Player")
                                                (send message set-label "Invalid move")))))]))
 
-                                   
+;; Slider to choose which column to make move in                            
 (define col-slider (new slider% [parent input-panel]
                         [label "Input column"]
                         [min-value 0]
                         [max-value (sub1 COLUMNS)]))
 
+;; Message for game stats
 (define message (new message%
                      [parent vertical-panel]
                      [label ""]))
 
+
+;; Starts the GUI
 (send frame show #t)
