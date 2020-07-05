@@ -38,7 +38,7 @@
 (define EMPTY-CIRCLE (circle DIA))
 (define MAX-PLAYER-CIRCLE (disk DIA #:color "Red"))
 (define MIN-PLAYER-CIRCLE (disk DIA #:color "Blue"))
-(define HSPACE 2)
+(define HSPACE 5)
 (define VSPACE 2)
 
 
@@ -166,7 +166,7 @@
 
 
 ;; Depth cutoff for alpha-beta search
-(define DEPTH-CUTOFF 8)
+(define DEPTH-CUTOFF 10)
 ;; Possible actions in every move
 (define ACTIONS (stream->list (in-range COLUMNS)))
 
@@ -210,7 +210,6 @@
     (cdr ans)))
 
 
-
 ;; Checks if game has been won
 (define (game-won? curr-node)
   (let* ([tiles (node-board curr-node)]
@@ -225,6 +224,7 @@
 (define game-state (start-state))
 
 
+
 ;; Top level frames
 (define frame (new frame% 
                    [label "Connect4 Game"]
@@ -232,21 +232,30 @@
                    [min-height 500]))
 
 ;; For vertical alignment
-(define vertical-panel (new vertical-pane% [parent frame] [alignment '(center center)]))
+(define vertical-pane (new vertical-pane% [parent frame] [alignment '(center center)]))
 
+;; Panel to enclose the canavs
+(define canvas-panel (new panel%
+                          [parent vertical-pane]
+                          [style '(border)]
+                          [vert-margin 10]
+                          [horiz-margin 10]))
+
+;; Canvas for drawing the Connect4 board
 (define canvas (new canvas% 
-                    [parent vertical-panel]
+                    [parent canvas-panel]
                     [paint-callback
                      (lambda (canvas dc)
-                       (draw-pict (pict-node (state-curr-node game-state)) dc 0 0))]))
+                       (draw-pict (pict-node (state-curr-node game-state)) dc 250 100))]))
 
 ;; For horizontally aligning input elements
-(define input-panel (new horizontal-pane% [parent vertical-panel] [alignment '(center center)]))
+(define input-pane (new horizontal-pane% [parent vertical-pane] [alignment '(center center)]))
 
 ;; Button to make move
 (define move-button (new button% 
-                         [parent input-panel]
+                         [parent input-pane]
                          [label "Make Move"]
+                         [horiz-margin 20]
                          [callback (lambda (button event)
                                      ;; Updates state to node
                                      ;; Returns true if game not won yet
@@ -279,15 +288,19 @@
                                                (send message set-label "Invalid move")))))]))
 
 ;; Slider to choose which column to make move in                            
-(define col-slider (new slider% [parent input-panel]
+(define col-slider (new slider% [parent input-pane]
                         [label "Input column"]
                         [min-value 0]
-                        [max-value (sub1 COLUMNS)]))
+                        [max-value (sub1 COLUMNS)]
+                        [style '(horizontal)]
+                        [horiz-margin 30]))
 
 ;; Message for game stats
 (define message (new message%
-                     [parent vertical-panel]
-                     [label ""]))
+                     [parent vertical-pane]
+                     [label ""]
+                     [vert-margin 20]
+                     [font (make-object font% 20 'modern 'normal 'bold)]))
 
 
 ;; Starts the GUI
