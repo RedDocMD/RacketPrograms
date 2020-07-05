@@ -19,7 +19,7 @@
 
 
 ;; Game state struct
-(struct state ([curr-node #:mutable] [move# #:mutable]))
+(struct state ([curr-node #:mutable] [move# #:mutable] [won #:mutable]) #:transparent)
 
 
 ;; Returns the starting node of the game
@@ -30,7 +30,7 @@
 
 ;; Returns the start state of the game
 (define (start-state)
-  (state (start-node) 0))
+  (state (start-node) 0 #f))
 
 
 ;; Params for displaying board
@@ -169,42 +169,53 @@
 ;; Possible actions in every move
 (define ACTIONS (stream->list (in-range COLUMNS)))
 
-
+;; The alpha beta search
 (define (alpha-beta-search curr-node eval-fn)
-  (cdr (min-value-search curr-node -inf.0 +inf.0 1 eval-fn)))
+  ;; For max player
+  (define (max-value-search curr-node alpha beta depth eval-fn)
+    (if (>= depth DEPTH-CUTOFF)
+        (cons (eval-fn curr-node) - 1)
+        (let ([v -inf.0]
+              [new-action -1])
+          (for ([a ACTIONS]
+                #:break (>= v beta))
+            (let ([new-node (make-move curr-node a)])
+              (when new-node
+                (let ([new-pair (min-value-search new-node alpha beta (add1 depth) eval-fn)])
+                  (when (> (car new-pair) v)
+                    (set! v (car new-pair))
+                    (set! new-action a))
+                  (set! alpha (max v alpha))))))
+          (cons v new-action))))
+  ;; For min player
+  (define (min-value-search curr-node alpha beta depth eval-fn)
+    (if (>= depth DEPTH-CUTOFF)
+        (cons (eval-fn curr-node) -1)
+        (let ([v +inf.0]
+              [new-action -1])
+          (for ([a ACTIONS]
+                #:break (<= v alpha))
+            (let ([new-node (make-move curr-node a)])
+              (when new-node
+                (let ([new-pair (max-value-search new-node alpha beta (add1 depth) eval-fn)])
+                  (when (< (car new-pair) v)
+                    (set! v (car new-pair))
+                    (set! new-action a))
+                  (set! beta (min v beta))))))
+          (cons v new-action))))
+  ;; Final logic
+  (let ([ans (min-value-search curr-node -inf.0 +inf.0 1 eval-fn)])
+    (displayln (car ans))
+    (cdr ans)))
 
-(define (max-value-search curr-node alpha beta depth eval-fn)
-  (if (>= depth DEPTH-CUTOFF)
-      (cons (eval-fn curr-node) - 1)
-      (let ([v -inf.0]
-            [new-action -1])
-        (for ([a ACTIONS]
-              #:break (>= v beta))
-          (let ([new-node (make-move curr-node a)])
-            (when new-node
-              (let ([new-pair (min-value-search new-node alpha beta (add1 depth) eval-fn)])
-                (when (> (car new-pair) v)
-                  (set! v (car new-pair))
-                  (set! new-action a))
-                (set! alpha (max v alpha))))))
-        (cons v new-action))))
+;; Checks if game has been won
+(define (game-won? curr-node)
+  (let* ([tiles (node-board curr-node)]
+         [chains (get-all-chains tiles)])
+    (cond [(find-win-chain chains MAX-PLAYER) MAX-PLAYER]
+          [(find-win-chain chains MIN-PLAYER) MIN-PLAYER]
+          [else #f])))
 
-(define (min-value-search curr-node alpha beta depth eval-fn)
-  (if (>= depth DEPTH-CUTOFF)
-      (cons (eval-fn curr-node) -1)
-      (let ([v +inf.0]
-            [new-action -1])
-        (for ([a ACTIONS]
-              #:break (<= v alpha))
-          (let ([new-node (make-move curr-node a)])
-            (when new-node
-              (let ([new-pair (max-value-search new-node alpha beta (add1 depth) eval-fn)])
-                (when (< (car new-pair) v)
-                  (set! v (car new-pair))
-                  (set! new-action a))
-                (set! beta (min v beta))))))
-        (cons v new-action))))
-                     
 
 ;; The mutable state of the game
 (define game-state (start-state))
@@ -223,9 +234,7 @@
                      (lambda (canvas dc)
                        (draw-pict (pict-node (state-curr-node game-state)) dc 0 0))]))
 
-(define input-panel (new horizontal-pane% 
-                         [parent vertical-panel]
-                         [alignment '(center top)]))
+(define input-panel (new horizontal-pane% [parent vertical-panel] [alignment '(center center)]))
 
 (define move-button (new button% 
                          [parent input-panel]
@@ -234,8 +243,10 @@
                                      (define (update-state next-node)
                                        (set-state-curr-node! game-state next-node)
                                        (set-state-move#! game-state (add1 (state-move# game-state)))
+                                       (when (game-won? next-node) (set-state-won! game-state #t))
+                                       (send message set-label "")
                                        (send canvas refresh)
-                                       #t)
+                                       (not (state-won game-state)))
                                      (define (make-human-move)
                                        (let ([next-node (make-move (state-curr-node game-state) (send col-slider get-value))])
                                          (if next-node
@@ -246,13 +257,21 @@
                                               [next-move (alpha-beta-search curr-node static-evaluator)]
                                               [next-node (make-move curr-node next-move)])
                                          (update-state next-node)))
-                                     (if (make-human-move)
-                                         (make-ai-move)
-                                         (println "Invalid move")))]))
+                                     (when (not (state-won game-state))
+                                       (if (make-human-move)
+                                           (when (not (make-ai-move)) (send message set-label "Game won by AI"))
+                                           (if (game-won? (state-curr-node game-state))
+                                               (send message set-label "Game won by Player")
+                                               (send message set-label "Invalid move")))))]))
+
                                    
 (define col-slider (new slider% [parent input-panel]
                         [label "Input column"]
                         [min-value 0]
                         [max-value (sub1 COLUMNS)]))
+
+(define message (new message%
+                     [parent vertical-panel]
+                     [label ""]))
 
 (send frame show #t)
